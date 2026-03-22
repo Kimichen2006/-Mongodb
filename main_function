@@ -1,0 +1,152 @@
+import os
+# 修正 --dearmor 拼字與 apt source 格式
+!curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+!echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+!sudo apt-get update
+!sudo apt-get install -y mongodb-org
+!pip install pymongo
+
+import time
+# 修正指令空格與目錄權限
+!sudo mkdir -p /data/db
+!sudo chown -R mongodb:mongodb /data/db
+# 啟動 mongod 服務
+!sudo mongod --dbpath /data/db --fork --logpath /var/log/mongodb.log
+time.sleep(5)
+
+print("Checking status:")
+!ps aux | grep mongod | grep -v grep
+print("\nRecent log:")
+!tail -n 5 /var/log/mongodb.log
+
+udn_url = "https://udn.com/rank/pv/2"
+ltn_url = "https://news.ltn.com.tw/list/breakingnews"
+yahoo_news_url = "https://tw.news.yahoo.com"
+
+import requests
+from bs4 import BeautifulSoup
+import json
+from datetime import datetime
+import pymongo
+
+# 設定連線資訊 (連線至本地端 MongoDB)
+LOCAL_CONNECTION_STRING = "mongodb://localhost:27017/"
+
+headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+
+results = []
+
+# 1. UDN 聯合新聞網
+try:
+    udn_res = requests.get(udn_url, headers=headers, timeout=10)
+    soup_udn = BeautifulSoup(udn_res.text, "html.parser")
+    for item in soup_udn.select('.story-list__text')[:5]:
+        a_tag = item.select_one('h2 a')
+        if a_tag:
+            url = a_tag.get('href')
+            if url.startswith('/'): url = 'https://udn.com' + url
+            results.append({
+                "title": a_tag.get_text(strip=True),
+                "url": url,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "source": "聯合報",
+                "raw_html": udn_res.text # 儲存原始網頁文字
+            })
+except Exception as e: print(f"UDN Error: {e}")
+
+# 2. 自由時報
+try:
+    ltn_res = requests.get(ltn_url, headers=headers, timeout=10)
+    soup_ltn = BeautifulSoup(ltn_res.text, "html.parser")
+    for item in soup_ltn.select("ul.list li")[:5]:
+        a_tag = item.select_one("a")
+        if a_tag:
+            url = a_tag["href"]
+            title = a_tag.get_text(strip=True)
+            results.append({
+                "title": title,
+                "url": url,
+                "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "source": "自由時報",
+                "raw_html": ltn_res.text # 儲存原始網頁文字
+            })
+except Exception as e: print(f"LTN Error: {e}")
+
+# 3. Yahoo 新聞
+try:
+    yahoo_res = requests.get(yahoo_news_url, headers=headers, timeout=10)
+    soup_yahoo = BeautifulSoup(yahoo_res.text, "html.parser")
+    for item in soup_yahoo.select('h3 a')[:5]:
+        url = item.get('href')
+        if url and not url.startswith('http'): url = 'https://tw.news.yahoo.com' + url
+        results.append({
+            "title": item.get_text(strip=True),
+            "url": url,
+            "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "source": "Yahoo 新聞",
+            "raw_html": yahoo_res.text # 儲存原始網頁文字
+        })
+except Exception as e: print(f"Yahoo News Error: {e}")
+
+# 寫入本地 MongoDB
+try:
+    client = pymongo.MongoClient(LOCAL_CONNECTION_STRING)
+    db = client["news_database"]
+    collection = db["news_articles"]
+
+    if results:
+        insert_result = collection.insert_many(results)
+        print(f"成功將 {len(insert_result.inserted_ids)} 筆資料存入本地 MongoDB 資料庫 (包含原始網頁文字)。")
+    else:
+        print("沒有可寫入的資料")
+except Exception as e:
+    print(f"MongoDB Error: {e}")
+
+# 修正 ObjectId 無法序列化的問題
+for r in results:
+    if "_id" in r:
+        r["_id"] = str(r["_id"])
+
+#印出json與raw html檔案確認存在
+
+import json
+from IPython.display import display, HTML
+
+#印出 JSON 格式資料 (截斷 raw_html 以免過長)
+print("JSON: ")
+preview_results = []
+for r in results:
+    temp = r.copy()
+    if "raw_html" in temp:
+        temp["raw_html"] = temp["raw_html"][:100] + "... (truncated)"
+    preview_results.append(temp)
+
+json_data = json.dumps(preview_results, ensure_ascii=False, indent=2)
+print(json_data)
+
+print("HTML: ")
+for i, item in enumerate(results, 1):
+    print(f"=== [{i}] 來源: {item['source']} | 標題: {item['title']} ===")
+    print(item.get('raw_html', '無原始 HTML 資料'))
+    print("\n" + "="*50 + "\n")
+
+#印出database資料
+import pymongo
+
+# 連線至本地端 MongoDB
+client = pymongo.MongoClient("mongodb://localhost:27017/")
+db = client["news_database"]
+collection = db["news_articles"]
+
+# 查詢所有資料
+cursor = collection.find({})
+query_results = list(cursor)
+
+print(f"目前資料庫中共有 {len(query_results)} 筆資料。\n")
+
+for item in query_results:
+    print("---------------------")
+    print(f"標題: {item.get('title')}")
+    print(f"日期: {item.get('date')}")
+    print(f"網址: {item.get('url')}")
+    print(f"來源: {item.get('source')}")
