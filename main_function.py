@@ -1,18 +1,18 @@
 import os
 # 修正 --dearmor 拼字與 apt source 格式
-!curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
-!echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-!sudo apt-get update
-!sudo apt-get install -y mongodb-org
-!pip install pymongo
+#!curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | sudo gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+#!echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+#!sudo apt-get update
+#!sudo apt-get install -y mongodb-org
+#!pip install pymongo
 
 import time
 # 修正指令空格與目錄權限
-!sudo mkdir -p /data/db
-!sudo chown -R mongodb:mongodb /data/db
+#!sudo mkdir -p /data/db
+#!sudo chown -R mongodb:mongodb /data/db
 # 啟動 mongod 服務
-!sudo mongod --dbpath /data/db --fork --logpath /var/log/mongodb.log
-time.sleep(5)
+#!sudo mongod --dbpath /data/db --fork --logpath /var/log/mongodb.log
+#time.sleep(5)
 
 print("Checking status:")
 !ps aux | grep mongod | grep -v grep
